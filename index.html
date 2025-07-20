@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Pathfinding Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom CSS for the application */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Define the appearance of grid nodes */
+        .node {
+            width: 100%;
+            height: 100%;
+            outline: 1px solid rgba(129, 212, 250, 0.2); /* Light blue outline */
+            display: inline-block;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Style for the start node */
+        .node-start {
+            background-color: #10B981; /* Emerald 500 */
+        }
+
+        /* Style for the end node */
+        .node-end {
+            background-color: #EF4444; /* Red 500 */
+        }
+
+        /* Style for wall nodes (obstacles) */
+        .node-wall {
+            background-color: #374151; /* Gray 700 */
+            transform: scale(1.05);
+        }
+
+        /* Animation for visited nodes */
+        .node-visited {
+            animation-name: visitedAnimation;
+            animation-duration: 1.5s;
+            animation-timing-function: ease-out;
+            animation-delay: 0;
+            animation-direction: alternate;
+            animation-iteration-count: 1;
+            animation-fill-mode: forwards;
+            animation-play-state: running;
+        }
+
+        @keyframes visitedAnimation {
+            0% {
+                transform: scale(0.3);
+                background-color: rgba(239, 68, 68, 0.5); /* Red-500 with opacity */
+                border-radius: 100%;
+            }
+            50% {
+                background-color: rgba(96, 165, 250, 0.75); /* Blue-400 with opacity */
+            }
+            75% {
+                transform: scale(1.2);
+                background-color: rgba(59, 130, 246, 0.9); /* Blue-500 with opacity */
+            }
+            100% {
+                transform: scale(1);
+                background-color: #3B82F6; /* Blue-500 */
+            }
+        }
+
+        /* Animation for the shortest path nodes */
+        .node-shortest-path {
+            animation-name: shortestPathAnimation;
+            animation-duration: 1s;
+            animation-timing-function: ease-out;
+            animation-delay: 0;
+            animation-direction: alternate;
+            animation-iteration-count: 1;
+            animation-fill-mode: forwards;
+            animation-play-state: running;
+        }
+
+        @keyframes shortestPathAnimation {
+            0% {
+                transform: scale(0.6);
+                background-color: #FBBF24; /* Amber 400 */
+            }
+            50% {
+                transform: scale(1.2);
+                background-color: #F59E0B; /* Amber 500 */
+            }
+            100% {
+                transform: scale(1);
+                background-color: #FCD34D; /* Amber 300 */
+            }
+        }
+        
+        /* Ensure grid container doesn't overflow on small screens */
+        #grid-container {
+            touch-action: none; /* Disable panning on touch devices to allow drawing */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col items-center min-h-screen p-4">
+
+    <div class="w-full max-w-7xl mx-auto">
+        <!-- Header Section -->
+        <header class="text-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">AI Pathfinding Visualizer</h1>
+            <p class="text-gray-400 mt-2">Visualize algorithms like Dijkstra's to find the shortest path.</p>
+        </header>
+
+        <!-- Controls Section -->
+        <div class="controls bg-gray-800 p-4 rounded-lg shadow-lg mb-4 flex flex-wrap items-center justify-center gap-4">
+            <button id="visualize-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+                Visualize Dijkstra's
+            </button>
+            <button id="reset-board-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                Reset Board
+            </button>
+            <button id="clear-path-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                Clear Path
+            </button>
+            <div class="flex items-center space-x-4 text-sm">
+                <div class="flex items-center"><div class="w-5 h-5 rounded-sm bg-emerald-500 mr-2"></div>Start</div>
+                <div class="flex items-center"><div class="w-5 h-5 rounded-sm bg-red-500 mr-2"></div>End</div>
+                <div class="flex items-center"><div class="w-5 h-5 rounded-sm bg-gray-700 border border-gray-600 mr-2"></div>Wall</div>
+                <div class="flex items-center"><div class="w-5 h-5 rounded-sm bg-blue-500 mr-2"></div>Visited</div>
+                <div class="flex items-center"><div class="w-5 h-5 rounded-sm bg-amber-300 mr-2"></div>Path</div>
+            </div>
+        </div>
+        
+        <!-- Message Box -->
+        <div id="message-box" class="hidden text-center p-2 mb-4 bg-yellow-500 text-gray-900 rounded-lg">
+            Place a start and end node before visualizing!
+        </div>
+
+        <!-- Grid Section -->
+        <div id="grid-container" class="w-full aspect-video max-w-7xl mx-auto grid" style="grid-template-columns: repeat(50, 1fr);">
+            <!-- Grid will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <script type="module">
+        // --- CONFIGURATION ---
+        const GRID_COLS = 50;
+        let GRID_ROWS = 25; // Will be calculated based on aspect ratio
+
+        // --- STATE MANAGEMENT ---
+        let grid = [];
+        let startNode = null;
+        let endNode = null;
+        let isDrawingWalls = false;
+        let isAlgorithmRunning = false;
+
+        // --- DOM ELEMENTS ---
+        const gridContainer = document.getElementById('grid-container');
+        const visualizeBtn = document.getElementById('visualize-btn');
+        const resetBoardBtn = document.getElementById('reset-board-btn');
+        const clearPathBtn = document.getElementById('clear-path-btn');
+        const messageBox = document.getElementById('message-box');
+
+        // --- NODE CLASS ---
+        class Node {
+            constructor(row, col) {
+                this.row = row;
+                this.col = col;
+                this.isStart = false;
+                this.isEnd = false;
+                this.isWall = false;
+                this.isVisited = false;
+                this.distance = Infinity;
+                this.previousNode = null;
+                this.element = document.createElement('div');
+                this.element.className = 'node';
+                this.element.id = `node-${row}-${col}`;
+            }
+        }
+
+        // --- GRID INITIALIZATION ---
+        function initializeGrid() {
+            // Calculate rows based on container width to maintain aspect ratio
+            const containerWidth = gridContainer.clientWidth;
+            const nodeWidth = containerWidth / GRID_COLS;
+            GRID_ROWS = Math.floor(gridContainer.clientHeight / nodeWidth);
+            gridContainer.style.gridTemplateRows = `repeat(${GRID_ROWS}, 1fr)`;
+
+            grid = [];
+            gridContainer.innerHTML = ''; // Clear previous grid
+            for (let row = 0; row < GRID_ROWS; row++) {
+                const currentRow = [];
+                for (let col = 0; col < GRID_COLS; col++) {
+                    const node = new Node(row, col);
+                    addNodeEventListeners(node);
+                    gridContainer.appendChild(node.element);
+                    currentRow.push(node);
+                }
+                grid.push(currentRow);
+            }
+             // Set default start and end nodes for better UX
+            const defaultStartRow = Math.floor(GRID_ROWS / 2);
+            const defaultStartCol = Math.floor(GRID_COLS / 4);
+            const defaultEndRow = Math.floor(GRID_ROWS / 2);
+            const defaultEndCol = Math.floor(GRID_COLS * 3 / 4);
+
+            setStartNode(grid[defaultStartRow][defaultStartCol]);
+            setEndNode(grid[defaultEndRow][defaultEndCol]);
+        }
+        
+        function setStartNode(node) {
+            if (node.isEnd || node.isWall) return;
+            if (startNode) {
+                startNode.isStart = false;
+                startNode.element.classList.remove('node-start');
+            }
+            startNode = node;
+            startNode.isStart = true;
+            startNode.element.classList.add('node-start');
+        }
+
+        function setEndNode(node) {
+            if (node.isStart || node.isWall) return;
+            if (endNode) {
+                endNode.isEnd = false;
+                endNode.element.classList.remove('node-end');
+            }
+            endNode = node;
+            endNode.isEnd = true;
+            endNode.element.classList.add('node-end');
+        }
+
+
+        // --- EVENT LISTENERS ---
+        function addNodeEventListeners(node) {
+            const { row, col } = node;
+            const element = node.element;
+
+            element.addEventListener('mousedown', (e) => handleMouseDown(e, row, col));
+            element.addEventListener('mouseenter', () => handleMouseEnter(row, col));
+            element.addEventListener('mouseup', () => handleMouseUp());
+            // For touch devices
+            element.addEventListener('touchstart', (e) => handleMouseDown(e, row, col));
+            element.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+                if (targetElement && targetElement.classList.contains('node')) {
+                    const [_, r, c] = targetElement.id.split('-');
+                    handleMouseEnter(parseInt(r), parseInt(c));
+                }
+            });
+            element.addEventListener('touchend', () => handleMouseUp());
+        }
+        
+        gridContainer.addEventListener('mouseleave', () => {
+            isDrawingWalls = false;
+        });
+
+        function handleMouseDown(e, row, col) {
+            e.preventDefault();
+            if (isAlgorithmRunning) return;
+            const node = grid[row][col];
+            if (e.ctrlKey || e.metaKey) { // Set end node with Ctrl/Cmd + Click
+                setEndNode(node);
+            } else if (node.isStart) {
+                // Logic to drag start node (can be implemented later)
+            } else if (node.isEnd) {
+                // Logic to drag end node (can be implemented later)
+            } else if (!node.isStart && !node.isEnd) {
+                toggleWall(node);
+                isDrawingWalls = true;
+            }
+        }
+
+        function handleMouseEnter(row, col) {
+            if (!isDrawingWalls || isAlgorithmRunning) return;
+            const node = grid[row][col];
+            if (!node.isStart && !node.isEnd) {
+                toggleWall(node);
+            }
+        }
+
+        function handleMouseUp() {
+            isDrawingWalls = false;
+        }
+
+        function toggleWall(node) {
+            if (node.isStart || node.isEnd) return;
+            node.isWall = !node.isWall;
+            node.element.classList.toggle('node-wall', node.isWall);
+        }
+
+        // --- ALGORITHM: DIJKSTRA ---
+        function dijkstra(grid, startNode, endNode) {
+            const visitedNodesInOrder = [];
+            startNode.distance = 0;
+            const unvisitedNodes = getAllNodes(grid);
+
+            while (unvisitedNodes.length) {
+                sortNodesByDistance(unvisitedNodes);
+                const closestNode = unvisitedNodes.shift();
+
+                if (closestNode.isWall) continue;
+
+                // If trapped, stop.
+                if (closestNode.distance === Infinity) return visitedNodesInOrder;
+
+                closestNode.isVisited = true;
+                visitedNodesInOrder.push(closestNode);
+
+                if (closestNode === endNode) return visitedNodesInOrder;
+
+                updateUnvisitedNeighbors(closestNode, grid);
+            }
+        }
+
+        function sortNodesByDistance(unvisitedNodes) {
+            unvisitedNodes.sort((nodeA, nodeB) => nodeA.distance - nodeB.distance);
+        }
+
+        function updateUnvisitedNeighbors(node, grid) {
+            const unvisitedNeighbors = getUnvisitedNeighbors(node, grid);
+            for (const neighbor of unvisitedNeighbors) {
+                neighbor.distance = node.distance + 1;
+                neighbor.previousNode = node;
+            }
+        }
+
+        function getUnvisitedNeighbors(node, grid) {
+            const neighbors = [];
+            const { col, row } = node;
+            if (row > 0) neighbors.push(grid[row - 1][col]);
+            if (row < grid.length - 1) neighbors.push(grid[row + 1][col]);
+            if (col > 0) neighbors.push(grid[row][col - 1]);
+            if (col < grid[0].length - 1) neighbors.push(grid[row][col + 1]);
+            return neighbors.filter(neighbor => !neighbor.isVisited);
+        }
+
+        function getAllNodes(grid) {
+            const nodes = [];
+            for (const row of grid) {
+                for (const node of row) {
+                    nodes.push(node);
+                }
+            }
+            return nodes;
+        }
+
+        // --- VISUALIZATION ---
+        function animateDijkstra(visitedNodesInOrder, nodesInShortestPathOrder) {
+            for (let i = 0; i <= visitedNodesInOrder.length; i++) {
+                if (i === visitedNodesInOrder.length) {
+                    setTimeout(() => {
+                        animateShortestPath(nodesInShortestPathOrder);
+                    }, 10 * i);
+                    return;
+                }
+                setTimeout(() => {
+                    const node = visitedNodesInOrder[i];
+                    if(!node.isStart && !node.isEnd) {
+                       node.element.classList.add('node-visited');
+                    }
+                }, 10 * i);
+            }
+        }
+
+        function animateShortestPath(nodesInShortestPathOrder) {
+            for (let i = 0; i < nodesInShortestPathOrder.length; i++) {
+                setTimeout(() => {
+                    const node = nodesInShortestPathOrder[i];
+                     if(!node.isStart && !node.isEnd) {
+                        node.element.classList.remove('node-visited');
+                        node.element.classList.add('node-shortest-path');
+                     }
+                }, 50 * i);
+            }
+            isAlgorithmRunning = false; // Allow user interaction again
+            toggleButtons(false);
+        }
+
+        function getNodesInShortestPathOrder(endNode) {
+            const nodesInShortestPathOrder = [];
+            let currentNode = endNode;
+            while (currentNode !== null) {
+                nodesInShortestPathOrder.unshift(currentNode);
+                currentNode = currentNode.previousNode;
+            }
+            return nodesInShortestPathOrder;
+        }
+
+        // --- CONTROL BUTTONS LOGIC ---
+        function handleVisualize() {
+            if (isAlgorithmRunning) return;
+            if (!startNode || !endNode) {
+                showMessage("Please set a start and an end node first.");
+                return;
+            }
+            
+            isAlgorithmRunning = true;
+            toggleButtons(true);
+            clearPath();
+
+            const visitedNodesInOrder = dijkstra(grid, startNode, endNode);
+            const nodesInShortestPathOrder = getNodesInShortestPathOrder(endNode);
+            animateDijkstra(visitedNodesInOrder, nodesInShortestPathOrder);
+        }
+        
+        function showMessage(msg) {
+            messageBox.textContent = msg;
+            messageBox.classList.remove('hidden');
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 3000);
+        }
+
+        function clearBoard() {
+            if (isAlgorithmRunning) return;
+            startNode = null;
+            endNode = null;
+            initializeGrid();
+        }
+
+        function clearPath(clearWalls = false) {
+            if (isAlgorithmRunning) return;
+            for (const row of grid) {
+                for (const node of row) {
+                    node.isVisited = false;
+                    node.distance = Infinity;
+                    node.previousNode = null;
+                    if (clearWalls) {
+                        node.isWall = false;
+                    }
+                    // Only remove visual classes, not start/end/wall
+                    if (!node.isStart && !node.isEnd && !node.isWall) {
+                         node.element.className = 'node';
+                    }
+                    if(node.isWall && clearWalls) {
+                        node.element.classList.remove('node-wall');
+                    }
+                }
+            }
+        }
+        
+        function toggleButtons(isVisualizing) {
+            visualizeBtn.disabled = isVisualizing;
+            resetBoardBtn.disabled = isVisualizing;
+            clearPathBtn.disabled = isVisualizing;
+            visualizeBtn.classList.toggle('opacity-50', isVisualizing);
+            visualizeBtn.classList.toggle('cursor-not-allowed', isVisualizing);
+        }
+
+        // --- INITIAL SETUP ---
+        visualizeBtn.addEventListener('click', handleVisualize);
+        resetBoardBtn.addEventListener('click', clearBoard);
+        clearPathBtn.addEventListener('click', () => clearPath(false));
+        
+        // Handle window resizing
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (!isAlgorithmRunning) {
+                    initializeGrid();
+                }
+            }, 200);
+        });
+
+        initializeGrid();
+    </script>
+</body>
+</html>
